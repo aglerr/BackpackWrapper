@@ -8,14 +8,14 @@ import org.bukkit.inventory.ItemStack;
 import java.util.HashSet;
 import java.util.Set;
 
-public class NMSBackpack {
+public class NMSBackpack_v1_17_R1 {
 
     private final Player owner;
     private final EntityArmorStand armorStand;
     private final ItemStack itemStack;
     private final Set<Player> shown = new HashSet<>();
 
-    public NMSBackpack(Player owner, EntityArmorStand armorStand, ItemStack itemStack) {
+    public NMSBackpack_v1_17_R1(Player owner, EntityArmorStand armorStand, ItemStack itemStack) {
         this.owner = owner;
         this.armorStand = armorStand;
         this.itemStack = itemStack;

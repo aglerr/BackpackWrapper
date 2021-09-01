@@ -42,6 +42,10 @@ public interface NMSArmorStand {
      */
     void destroyArmorStand(Player player);
 
+    void hideAllArmorStand(Player target);
+
+    void showAllArmorStand(Player target);
+
     /**
      * Task that will run each tick, the task is to make armor stand (backpack)
      * to follow the owner head rotation
@@ -66,5 +70,11 @@ public interface NMSArmorStand {
      * @return
      */
     boolean isWearingBackpack(Player player);
+
+    void equipFakeArmor(Player player, Player target, ItemStack stack);
+
+    void unequipFakeArmor(Player player);
+
+    boolean isWearingFakeArmor(Player player);
 
 }

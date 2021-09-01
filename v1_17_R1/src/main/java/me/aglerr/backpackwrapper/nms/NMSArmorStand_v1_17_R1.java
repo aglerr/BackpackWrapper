@@ -3,6 +3,7 @@ package me.aglerr.backpackwrapper.nms;
 import com.mojang.datafixers.util.Pair;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.*;
+import net.minecraft.server.level.EntityPlayer;
 import net.minecraft.server.level.WorldServer;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.EnumItemSlot;
@@ -23,7 +24,8 @@ import java.util.*;
 
 public class NMSArmorStand_v1_17_R1 implements NMSArmorStand{
 
-    private final Map<Player, NMSBackpack> armorStandMap = new HashMap<>();
+    private final Map<Player, NMSBackpack_v1_17_R1> armorStandMap = new HashMap<>();
+    private final Map<Player, List<Pair<EnumItemSlot, net.minecraft.world.item.ItemStack>>> defaultArmor = new HashMap<>();
 
     @Override
     public void setHeadRotation(Entity entity, float yaw) {
@@ -34,13 +36,12 @@ public class NMSArmorStand_v1_17_R1 implements NMSArmorStand{
     public void setHeadRotation(Player player, float yaw) {
         if(!armorStandMap.containsKey(player)) return;
 
-        NMSBackpack backpack = armorStandMap.get(player);
+        NMSBackpack_v1_17_R1 backpack = armorStandMap.get(player);
         sendPacket(new PacketPlayOutEntityHeadRotation(backpack.getArmorStand(), ((byte) yaw)), null);
     }
 
     @Override
     public void createArmorStand(Player player, Player target, ItemStack stack) {
-        System.out.println("Equipping backpack for " + player.getName());
         WorldServer worldServer = ((CraftWorld) player.getWorld()).getHandle();
         EntityArmorStand stand = new EntityArmorStand(EntityTypes.c, worldServer);
 
@@ -51,15 +52,14 @@ public class NMSArmorStand_v1_17_R1 implements NMSArmorStand{
         stand.setInvulnerable(true);
         stand.collides = false;
 
-        NMSBackpack nmsBackpack = armorStandMap.get(player);
+        NMSBackpack_v1_17_R1 nmsBackpack = armorStandMap.get(player);
 
         if(nmsBackpack == null){
-            nmsBackpack = new NMSBackpack(player, stand, stack);
+            nmsBackpack = new NMSBackpack_v1_17_R1(player, stand, stack);
             armorStandMap.put(player, nmsBackpack);
         }
 
         if(nmsBackpack.isShown(target)){
-            System.out.println("Cancelled, already shown!");
             return;
         }
 
@@ -84,15 +84,32 @@ public class NMSArmorStand_v1_17_R1 implements NMSArmorStand{
     @Override
     public void destroyArmorStand(Player player) {
         if(!armorStandMap.containsKey(player)) return;
-        System.out.println("Destroying backpack for " + player.getName());
 
         // Remove the nms backpack from the map and keep the reference
-        NMSBackpack nmsBackpack = armorStandMap.remove(player);
+        NMSBackpack_v1_17_R1 nmsBackpack = armorStandMap.remove(player);
         // Make the armor stand stop riding first
         nmsBackpack.getArmorStand().stopRiding();
         // And then destroy the armor stand
         sendPacket(new PacketPlayOutEntityDestroy(nmsBackpack.getArmorStand().getId()), null);
     }
+
+    @Override
+    public void hideAllArmorStand(Player target) {
+        // Loop through all armor stand
+        armorStandMap.forEach((player, backpack) -> {
+            // Make the armor stand stop riding, and then destroy it
+            backpack.getArmorStand().stopRiding();
+            sendPacket(new PacketPlayOutEntityDestroy(backpack.getArmorStand().getId()), target);
+        });
+    }
+
+    @Override
+    public void showAllArmorStand(Player target) {
+        // Loop through all armor stand
+        armorStandMap.forEach((player, backpack) ->
+                createArmorStand(player, target, backpack.getItemStack()));
+    }
+
 
     @Override
     public void rotateArmorStand() {
@@ -131,6 +148,55 @@ public class NMSArmorStand_v1_17_R1 implements NMSArmorStand{
     @Override
     public boolean isWearingBackpack(Player player) {
         return armorStandMap.containsKey(player);
+    }
+
+    @Override
+    public void equipFakeArmor(Player player, Player target, ItemStack stack) {
+
+        EntityPlayer craftPlayer = ((CraftPlayer) player).getHandle();
+
+        // Get all armor that player using right now
+        ItemStack helmet = player.getInventory().getHelmet();
+        ItemStack chestplate = player.getInventory().getChestplate();
+        ItemStack leggings = player.getInventory().getLeggings();
+        ItemStack boots = player.getInventory().getBoots();
+
+        // Store the armor to the hashmap
+        final List<Pair<EnumItemSlot, net.minecraft.world.item.ItemStack>> defaultEquipment = Arrays.asList(
+                new Pair<>(EnumItemSlot.f, CraftItemStack.asNMSCopy(helmet)),
+                new Pair<>(EnumItemSlot.e, CraftItemStack.asNMSCopy(chestplate)),
+                new Pair<>(EnumItemSlot.d, CraftItemStack.asNMSCopy(leggings)),
+                new Pair<>(EnumItemSlot.c, CraftItemStack.asNMSCopy(boots))
+        );
+
+        // Finally store it to the map
+        defaultArmor.put(player, defaultEquipment);
+
+        final List<Pair<EnumItemSlot, net.minecraft.world.item.ItemStack>> modifiedEquipment = Arrays.asList(
+                new Pair<>(EnumItemSlot.f, CraftItemStack.asNMSCopy(stack)),
+                new Pair<>(EnumItemSlot.e, CraftItemStack.asNMSCopy(chestplate)),
+                new Pair<>(EnumItemSlot.d, CraftItemStack.asNMSCopy(leggings)),
+                new Pair<>(EnumItemSlot.c, CraftItemStack.asNMSCopy(boots))
+        );
+
+        sendPacket(new PacketPlayOutEntityEquipment(craftPlayer.getId(), modifiedEquipment), target);
+    }
+
+    @Override
+    public void unequipFakeArmor(Player player) {
+        // If player is not wearing fake armor, return
+        if(!defaultArmor.containsKey(player)) return;
+
+        EntityPlayer craftPlayer = ((CraftPlayer) player).getHandle();
+
+        // Set the equipment to the default, and then remove
+        final List<Pair<EnumItemSlot, net.minecraft.world.item.ItemStack>> equipment = defaultArmor.remove(player);
+        sendPacket(new PacketPlayOutEntityEquipment(craftPlayer.getId(), equipment), null);
+    }
+
+    @Override
+    public boolean isWearingFakeArmor(Player player) {
+        return defaultArmor.containsKey(player);
     }
 
     private void sendPacket(Packet packet, Player player){
